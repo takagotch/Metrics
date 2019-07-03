@@ -52,6 +52,63 @@ def auc(actual, posterior):
 
 ```
 
-```
+```java
+// CachedGauge.java
+package com.codahale.metics;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+
+public abstract class CachedGauge<T> implements Guage<T> {
+  private final Clock clock;
+  private final AtomicLong reloadAt;
+  private final long timeoutNS;
+  
+  private volatile T value;
+  
+  /**/
+  protected CachedGauge(long timeout, TimeUnit timeoutUnit) {
+    this(Clock.defaultClock(), timeout, timeoutUnit);
+  }
+  
+  //
+  protected CachedGauge(Clock clock, long timeout, TimeUnit timeoutUnit) {
+    this.clock = clock;
+    this.reloadAt = new AtomicLong(0);
+    this.timeoutNS = timeoutUnit.toNanos(timeout);
+  }
+  
+  protected abstract T loadValue();
+  
+  @Override
+  public T getValue(Clock clock, long timeout, TimeUnit timeoutUnit) {
+    this.clock = clock;
+    this.reloadAt = new AtomicLong(0);
+    this.timeoutNS = timeoutUnit.toNanos(timeout);
+  }
+  
+  protected abstract T loadValue();
+  
+  @Override
+  public T getValue() {
+    if (shouldLoad()) {
+      this.value = loadValue();
+    }
+    return value;
+  }
+  
+  private boolean shouldLoad() {
+    for ( ;; ) {
+      final long time = clock.getTick();
+      final long current = reloadAt.get();
+      if (current > time) {
+        return false;
+      }
+      if (reloadAt.compareAndSet(current, time + timeoutNS)) {
+        return true;
+      }
+    }
+  }
+}
 ```
 
